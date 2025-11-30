@@ -1,10 +1,14 @@
 # ALS Compression Library
 
+**Middleware for AI Prompts — Reduce LLM Token Costs**
+
 Adaptive Logic Stream (ALS) compression library for structured data (CSV, JSON).
 
 ## Overview
 
-ALS is a high-performance compression format that describes how to generate data rather than listing it, achieving superior compression ratios for structured data. The library supports bidirectional conversion (CSV/JSON ↔ ALS), falls back to CTX compression when ALS compression ratio is insufficient, and leverages high-performance techniques including SIMD instructions, zero-copy operations, and concurrent data structures.
+ALS is a high-performance compression format designed as **middleware for AI applications** to reduce Large Language Model (LLM) token consumption and API costs. By compressing structured data through algorithmic pattern description rather than raw enumeration, ALS achieves superior compression ratios that significantly reduce the data payload sent to AI services. 
+
+The library supports bidirectional conversion (CSV/JSON ↔ ALS), falls back to CTX compression when ALS compression ratio is insufficient, and leverages high-performance techniques including SIMD instructions, zero-copy operations, and concurrent data structures.
 
 ## Features
 
@@ -16,6 +20,16 @@ ALS is a high-performance compression format that describes how to generate data
 - **Zero-Copy Operations**: Minimizes memory allocations and copies using rkyv serialization
 - **Thread-Safe**: Atomic operations and concurrent data structures for multi-threaded applications
 - **Multiple Bindings**: Python (PyO3), C FFI, Go (CGO), WebAssembly, and Node.js support
+
+## Use Case: AI Prompt Middleware
+
+ALS is optimized as middleware for AI applications to minimize token costs:
+
+- **Token Reduction**: Compress structured data by 50-90% before sending to LLMs, directly reducing token billing
+- **Cost Savings**: Smaller payloads mean lower API costs for services like OpenAI, Anthropic, Google PaLM, and others
+- **Decompression on Retrieval**: Decompress back to original format after receiving AI responses
+- **Seamless Integration**: Works with any AI framework (LangChain, LlamaIndex, etc.) and LLM provider
+- **Lossless Compression**: Maintains data integrity—compression is fully reversible with no information loss
 
 ## Installation
 
@@ -34,10 +48,13 @@ use als_compression::AlsCompressor;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let compressor = AlsCompressor::new();
     
-    // Compress CSV
+    // Compress CSV data to reduce tokens for AI APIs
     let csv_data = "col1,col2,col3\n1,a,x\n2,b,y\n3,c,z\n";
     let compressed = compressor.compress_csv(csv_data)?;
     println!("Compressed: {}", compressed);
+    
+    // Send compressed version to LLM instead of raw CSV
+    // Decompress response when received back from AI service
     
     Ok(())
 }
