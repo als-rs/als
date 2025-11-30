@@ -6,14 +6,28 @@
 use crate::config::ParserConfig;
 use crate::error::{AlsError, Result};
 
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
+
 use super::document::{AlsDocument, ColumnStream, FormatIndicator};
 use super::operator::AlsOperator;
 use super::tokenizer::{Token, Tokenizer, VersionType};
+
+/// Default threshold for parallel decompression (number of columns * estimated rows).
+/// Below this threshold, sequential processing is used to avoid parallel overhead.
+const PARALLEL_EXPAND_THRESHOLD: usize = 1000;
 
 /// ALS format parser.
 ///
 /// Parses ALS format text into `AlsDocument` structures and can expand
 /// them to tabular data (CSV, JSON).
+///
+/// # Parallel Processing
+///
+/// When the `parallel` feature is enabled and the dataset is large enough
+/// (determined by `PARALLEL_EXPAND_THRESHOLD`), columns are expanded in parallel
+/// using Rayon's work-stealing scheduler. This provides significant speedup
+/// for multi-column datasets on multi-core systems.
 pub struct AlsParser {
     config: ParserConfig,
 }
@@ -320,6 +334,9 @@ impl AlsParser {
     /// Expand an ALS document to a vector of rows.
     ///
     /// Each row is a vector of string values.
+    ///
+    /// When the `parallel` feature is enabled and the data is large enough,
+    /// columns are expanded in parallel for better performance.
     pub fn expand(&self, doc: &AlsDocument) -> Result<Vec<Vec<String>>> {
         if doc.streams.is_empty() {
             return Ok(Vec::new());
@@ -328,12 +345,159 @@ impl AlsParser {
         // Get the default dictionary for resolving references
         let default_dict = doc.default_dictionary();
 
-        // Expand all columns
+        // Expand all columns (parallel or sequential based on size)
+        let expanded_columns = self.expand_columns_internal(doc, default_dict)?;
+
+        // Validate all columns have the same length
+        if let Some(first) = expanded_columns.first() {
+            let expected_len = first.len();
+            for col in expanded_columns.iter() {
+                if col.len() != expected_len {
+                    return Err(AlsError::ColumnMismatch {
+                        schema: expected_len,
+                        data: col.len(),
+                    });
+                }
+            }
+        }
+
+        // Transpose columns to rows
+        let row_count = expanded_columns.first().map(|c| c.len()).unwrap_or(0);
+        let mut rows = Vec::with_capacity(row_count);
+        
+        for row_idx in 0..row_count {
+            let row: Vec<String> = expanded_columns
+                .iter()
+                .map(|col| col[row_idx].clone())
+                .collect();
+            rows.push(row);
+        }
+
+        Ok(rows)
+    }
+
+    /// Determine if parallel processing should be used for expansion.
+    fn should_use_parallel_expand(&self, doc: &AlsDocument) -> bool {
+        // Check if parallelism is explicitly disabled (parallelism = 1)
+        if self.config.parallelism == 1 {
+            return false;
+        }
+
+        // Need at least 2 columns for parallel benefit
+        if doc.streams.len() < 2 {
+            return false;
+        }
+
+        // Estimate the data size based on stream complexity
+        let estimated_size: usize = doc.streams.iter()
+            .map(|s| s.expanded_count())
+            .sum::<usize>() * doc.streams.len();
+
+        estimated_size >= PARALLEL_EXPAND_THRESHOLD
+    }
+
+    /// Expand columns using either parallel or sequential processing.
+    fn expand_columns_internal(
+        &self,
+        doc: &AlsDocument,
+        default_dict: Option<&Vec<String>>,
+    ) -> Result<Vec<Vec<String>>> {
+        #[cfg(feature = "parallel")]
+        {
+            if self.should_use_parallel_expand(doc) {
+                return self.expand_columns_parallel(doc, default_dict);
+            }
+        }
+
+        // Sequential expansion
+        self.expand_columns_sequential(doc, default_dict)
+    }
+
+    /// Expand columns sequentially.
+    fn expand_columns_sequential(
+        &self,
+        doc: &AlsDocument,
+        default_dict: Option<&Vec<String>>,
+    ) -> Result<Vec<Vec<String>>> {
         let mut expanded_columns: Vec<Vec<String>> = Vec::with_capacity(doc.streams.len());
         for stream in &doc.streams {
             let column_values = stream.expand(default_dict.map(|v| v.as_slice()))?;
             expanded_columns.push(column_values);
         }
+        Ok(expanded_columns)
+    }
+
+    /// Expand columns in parallel using Rayon.
+    #[cfg(feature = "parallel")]
+    fn expand_columns_parallel(
+        &self,
+        doc: &AlsDocument,
+        default_dict: Option<&Vec<String>>,
+    ) -> Result<Vec<Vec<String>>> {
+        let dict_slice = default_dict.map(|v| v.as_slice());
+
+        // Configure thread pool if parallelism is specified
+        let result: Result<Vec<Vec<String>>> = if self.config.parallelism > 1 {
+            // Use a custom thread pool with specified parallelism
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(self.config.parallelism)
+                .build()
+                .map_err(|e| AlsError::IoError(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to create thread pool: {}", e),
+                )))?;
+
+            pool.install(|| {
+                doc.streams
+                    .par_iter()
+                    .map(|stream| stream.expand(dict_slice))
+                    .collect()
+            })
+        } else {
+            // Use default Rayon thread pool (auto-detect cores)
+            doc.streams
+                .par_iter()
+                .map(|stream| stream.expand(dict_slice))
+                .collect()
+        };
+
+        result
+    }
+
+    /// Check if parallel processing would be used for the given document.
+    ///
+    /// This is useful for testing and debugging to understand
+    /// when parallel processing will be triggered.
+    pub fn would_use_parallel(&self, doc: &AlsDocument) -> bool {
+        #[cfg(feature = "parallel")]
+        {
+            self.should_use_parallel_expand(doc)
+        }
+        #[cfg(not(feature = "parallel"))]
+        {
+            let _ = doc;
+            false
+        }
+    }
+
+    /// Expand an ALS document using parallel processing.
+    ///
+    /// This method forces parallel expansion regardless of data size.
+    /// Useful when you know the data is large enough to benefit from
+    /// parallel processing.
+    ///
+    /// # Note
+    ///
+    /// This method requires the `parallel` feature to be enabled.
+    /// Without the feature, it falls back to sequential expansion.
+    #[cfg(feature = "parallel")]
+    pub fn expand_parallel(&self, doc: &AlsDocument) -> Result<Vec<Vec<String>>> {
+        if doc.streams.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let default_dict = doc.default_dictionary();
+        let expanded_columns = self.expand_columns_parallel(doc, default_dict)?;
 
         // Validate all columns have the same length
         if let Some(first) = expanded_columns.first() {
@@ -368,6 +532,343 @@ impl AlsParser {
         let doc = self.parse(input)?;
         let rows = self.expand(&doc)?;
         Ok((doc.schema.clone(), rows))
+    }
+
+    /// Parse ALS format and convert to CSV.
+    ///
+    /// This is a convenience method that parses ALS input, expands it to tabular data,
+    /// and serializes the result to CSV format.
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - ALS text to parse
+    ///
+    /// # Returns
+    ///
+    /// A string containing the CSV representation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use als_compression::AlsParser;
+    ///
+    /// let parser = AlsParser::new();
+    /// let als = "#id #name\n1>3|Alice Bob Charlie";
+    /// let csv = parser.to_csv(als).unwrap();
+    /// assert!(csv.contains("id,name"));
+    /// ```
+    pub fn to_csv(&self, input: &str) -> Result<String> {
+        use crate::convert::csv::to_csv;
+        use crate::convert::{Column, TabularData, Value};
+        use std::borrow::Cow;
+
+        // Parse ALS document
+        let doc = self.parse(input)?;
+
+        // Expand to rows
+        let rows = self.expand(&doc)?;
+
+        // Convert to TabularData
+        let mut data = TabularData::with_capacity(doc.schema.len());
+
+        if !rows.is_empty() {
+            // Transpose rows to columns
+            for (col_idx, col_name) in doc.schema.iter().enumerate() {
+                let col_values: Vec<Value> = rows
+                    .iter()
+                    .map(|row| {
+                        let value_str = &row[col_idx];
+                        // Check for special tokens first
+                        if value_str == crate::als::NULL_TOKEN {
+                            Value::Null
+                        } else if value_str == crate::als::EMPTY_TOKEN {
+                            Value::String(Cow::Owned(String::new()))
+                        } else if value_str.is_empty() {
+                            // Empty string without token (shouldn't happen but handle it)
+                            Value::Null
+                        } else if let Ok(i) = value_str.parse::<i64>() {
+                            Value::Integer(i)
+                        } else if let Ok(f) = value_str.parse::<f64>() {
+                            Value::Float(f)
+                        } else if let Some(b) = parse_boolean_value(value_str) {
+                            Value::Boolean(b)
+                        } else {
+                            Value::String(Cow::Owned(value_str.clone()))
+                        }
+                    })
+                    .collect();
+
+                data.add_column(Column::new(Cow::Owned(col_name.clone()), col_values));
+            }
+        } else {
+            // Empty data - just add columns with no values
+            for col_name in &doc.schema {
+                data.add_column(Column::new(Cow::Owned(col_name.clone()), Vec::new()));
+            }
+        }
+
+        // Convert to CSV
+        to_csv(&data)
+    }
+
+    /// Parse ALS format and convert directly to JSON.
+    ///
+    /// This is a convenience method that parses ALS input, expands it to
+    /// tabular data, and converts it to JSON format.
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - ALS format text to parse
+    ///
+    /// # Returns
+    ///
+    /// A JSON string representation of the data.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use als_compression::AlsParser;
+    ///
+    /// let parser = AlsParser::new();
+    /// let als = "#id #name\n1>3|Alice Bob Charlie";
+    /// let json = parser.to_json(als).unwrap();
+    /// assert!(json.contains("\"id\""));
+    /// ```
+    pub fn to_json(&self, input: &str) -> Result<String> {
+        use crate::convert::json::to_json;
+        use crate::convert::{Column, TabularData, Value};
+        use std::borrow::Cow;
+
+        // Parse ALS document
+        let doc = self.parse(input)?;
+
+        // Expand to rows
+        let rows = self.expand(&doc)?;
+
+        // Convert to TabularData
+        let mut data = TabularData::with_capacity(doc.schema.len());
+
+        if !rows.is_empty() {
+            // Transpose rows to columns
+            for (col_idx, col_name) in doc.schema.iter().enumerate() {
+                let col_values: Vec<Value> = rows
+                    .iter()
+                    .map(|row| {
+                        let value_str = &row[col_idx];
+                        // Check for special tokens first
+                        if value_str == crate::als::NULL_TOKEN {
+                            Value::Null
+                        } else if value_str == crate::als::EMPTY_TOKEN {
+                            Value::String(Cow::Owned(String::new()))
+                        } else if value_str.is_empty() {
+                            // Empty string without token (shouldn't happen but handle it)
+                            Value::Null
+                        } else if let Ok(i) = value_str.parse::<i64>() {
+                            Value::Integer(i)
+                        } else if let Ok(f) = value_str.parse::<f64>() {
+                            Value::Float(f)
+                        } else if let Some(b) = parse_boolean_value(value_str) {
+                            Value::Boolean(b)
+                        } else {
+                            Value::String(Cow::Owned(value_str.clone()))
+                        }
+                    })
+                    .collect();
+
+                data.add_column(Column::new(Cow::Owned(col_name.clone()), col_values));
+            }
+        } else {
+            // Empty data - just add columns with no values
+            for col_name in &doc.schema {
+                data.add_column(Column::new(Cow::Owned(col_name.clone()), Vec::new()));
+            }
+        }
+
+        // Convert to JSON
+        to_json(&data)
+    }
+
+    /// Parse ALS format text into an `AlsDocument` asynchronously.
+    ///
+    /// This is an async version of `parse` that allows integration with
+    /// async runtimes like Tokio. It's particularly useful for processing large
+    /// ALS files without blocking the async executor.
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - ALS format text to parse
+    ///
+    /// # Returns
+    ///
+    /// An `AlsDocument` containing the parsed data.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use als_compression::AlsParser;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let parser = AlsParser::new();
+    ///     let als = "#id #name\n1>3|alice bob charlie";
+    ///     let doc = parser.parse_async(als).await.unwrap();
+    /// }
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// This method requires the `async` feature to be enabled.
+    #[cfg(feature = "async")]
+    pub async fn parse_async(&self, input: &str) -> Result<AlsDocument> {
+        let input = input.to_string();
+        let config = self.config.clone();
+        
+        // Spawn blocking task to avoid blocking the async executor
+        tokio::task::spawn_blocking(move || {
+            let parser = AlsParser::with_config(config);
+            parser.parse(&input)
+        })
+        .await
+        .map_err(|e| AlsError::IoError(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("Task join error: {}", e),
+        )))?
+    }
+
+    /// Parse ALS format and convert to CSV asynchronously.
+    ///
+    /// This is an async version of `to_csv` that allows integration with
+    /// async runtimes like Tokio. It's particularly useful for processing large
+    /// ALS files without blocking the async executor.
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - ALS text to parse
+    ///
+    /// # Returns
+    ///
+    /// A string containing the CSV representation.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use als_compression::AlsParser;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let parser = AlsParser::new();
+    ///     let als = "#id #name\n1>3|Alice Bob Charlie";
+    ///     let csv = parser.to_csv_async(als).await.unwrap();
+    /// }
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// This method requires the `async` feature to be enabled.
+    #[cfg(feature = "async")]
+    pub async fn to_csv_async(&self, input: &str) -> Result<String> {
+        let input = input.to_string();
+        let config = self.config.clone();
+        
+        // Spawn blocking task to avoid blocking the async executor
+        tokio::task::spawn_blocking(move || {
+            let parser = AlsParser::with_config(config);
+            parser.to_csv(&input)
+        })
+        .await
+        .map_err(|e| AlsError::IoError(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("Task join error: {}", e),
+        )))?
+    }
+
+    /// Parse ALS format and convert to JSON asynchronously.
+    ///
+    /// This is an async version of `to_json` that allows integration with
+    /// async runtimes like Tokio. It's particularly useful for processing large
+    /// ALS files without blocking the async executor.
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - ALS format text to parse
+    ///
+    /// # Returns
+    ///
+    /// A JSON string representation of the data.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use als_compression::AlsParser;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let parser = AlsParser::new();
+    ///     let als = "#id #name\n1>3|alice bob charlie";
+    ///     let json = parser.to_json_async(als).await.unwrap();
+    /// }
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// This method requires the `async` feature to be enabled.
+    #[cfg(feature = "async")]
+    pub async fn to_json_async(&self, input: &str) -> Result<String> {
+        let input = input.to_string();
+        let config = self.config.clone();
+        
+        // Spawn blocking task to avoid blocking the async executor
+        tokio::task::spawn_blocking(move || {
+            let parser = AlsParser::with_config(config);
+            parser.to_json(&input)
+        })
+        .await
+        .map_err(|e| AlsError::IoError(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("Task join error: {}", e),
+        )))?
+    }
+
+    /// Expand an ALS document to a vector of rows asynchronously.
+    ///
+    /// This is an async version of `expand` that allows integration with
+    /// async runtimes like Tokio. It's particularly useful for processing large
+    /// ALS documents without blocking the async executor.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The ALS document to expand
+    ///
+    /// # Returns
+    ///
+    /// A vector of rows, where each row is a vector of string values.
+    ///
+    /// # Note
+    ///
+    /// This method requires the `async` feature to be enabled.
+    #[cfg(feature = "async")]
+    pub async fn expand_async(&self, doc: AlsDocument) -> Result<Vec<Vec<String>>> {
+        let config = self.config.clone();
+        
+        // Spawn blocking task to avoid blocking the async executor
+        tokio::task::spawn_blocking(move || {
+            let parser = AlsParser::with_config(config);
+            parser.expand(&doc)
+        })
+        .await
+        .map_err(|e| AlsError::IoError(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("Task join error: {}", e),
+        )))?
+    }
+}
+
+/// Parse a string as a boolean value (helper for to_csv).
+fn parse_boolean_value(s: &str) -> Option<bool> {
+    match s.to_lowercase().as_str() {
+        "true" | "yes" | "y" | "t" => Some(true),
+        "false" | "no" | "n" | "f" => Some(false),
+        _ => None,
     }
 }
 
@@ -609,5 +1110,221 @@ $default:active|inactive|pending
         let parser = AlsParser::new();
         let result = parser.parse("!v255\n#col\n1");
         assert!(matches!(result, Err(AlsError::VersionMismatch { expected: 1, found: 255 })));
+    }
+
+    #[test]
+    fn test_to_json_basic() {
+        let parser = AlsParser::new();
+        let als = "#id #name\n1>3|alice bob charlie";
+        let json = parser.to_json(als).unwrap();
+        
+        // Parse the JSON to verify it's valid
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(parsed.is_array());
+        
+        let array = parsed.as_array().unwrap();
+        assert_eq!(array.len(), 3);
+        
+        assert_eq!(array[0]["id"], 1);
+        assert_eq!(array[0]["name"], "alice");
+        assert_eq!(array[1]["id"], 2);
+        assert_eq!(array[1]["name"], "bob");
+        assert_eq!(array[2]["id"], 3);
+        assert_eq!(array[2]["name"], "charlie");
+    }
+
+    #[test]
+    fn test_to_json_empty() {
+        let parser = AlsParser::new();
+        let als = "";
+        let json = parser.to_json(als).unwrap();
+        
+        assert_eq!(json, "[]");
+    }
+
+    #[test]
+    fn test_to_json_with_nulls() {
+        let parser = AlsParser::new();
+        // Use the actual NULL_TOKEN value which is "\\0"
+        let als = "#col\n\\\\0 value \\\\0";
+        let json = parser.to_json(als).unwrap();
+        
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let array = parsed.as_array().unwrap();
+        
+        assert_eq!(array.len(), 3);
+        assert!(array[0]["col"].is_null());
+        assert_eq!(array[1]["col"], "value");
+        assert!(array[2]["col"].is_null());
+    }
+
+    #[test]
+    fn test_to_json_with_types() {
+        let parser = AlsParser::new();
+        let als = "#int #float #bool #str\n42|3.14|true|hello";
+        let json = parser.to_json(als).unwrap();
+        
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let array = parsed.as_array().unwrap();
+        
+        assert_eq!(array.len(), 1);
+        assert_eq!(array[0]["int"], 42);
+        assert_eq!(array[0]["float"], 3.14);
+        assert_eq!(array[0]["bool"], true);
+        assert_eq!(array[0]["str"], "hello");
+    }
+
+    #[test]
+    fn test_to_json_nested_reconstruction() {
+        let parser = AlsParser::new();
+        let als = "#id #user.name #user.age\n1|alice|30";
+        let json = parser.to_json(als).unwrap();
+        
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let array = parsed.as_array().unwrap();
+        
+        assert_eq!(array.len(), 1);
+        assert_eq!(array[0]["id"], 1);
+        assert_eq!(array[0]["user"]["name"], "alice");
+        assert_eq!(array[0]["user"]["age"], 30);
+    }
+
+    #[test]
+    fn test_to_json_with_dictionary() {
+        let parser = AlsParser::new();
+        let als = "$default:active|inactive\n#id #status\n1>2|_0 _1";
+        let json = parser.to_json(als).unwrap();
+        
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let array = parsed.as_array().unwrap();
+        
+        assert_eq!(array.len(), 2);
+        assert_eq!(array[0]["id"], 1);
+        assert_eq!(array[0]["status"], "active");
+        assert_eq!(array[1]["id"], 2);
+        assert_eq!(array[1]["status"], "inactive");
+    }
+
+    // Parallel decompression tests
+
+    #[test]
+    fn test_would_use_parallel_small_doc() {
+        let parser = AlsParser::new();
+        let doc = parser.parse("#col\n1>5").unwrap();
+        
+        // Small data should not use parallel processing
+        assert!(!parser.would_use_parallel(&doc));
+    }
+
+    #[test]
+    fn test_would_use_parallel_single_column() {
+        let parser = AlsParser::new();
+        let doc = parser.parse("#col\n1>1000").unwrap();
+        
+        // Single column should not use parallel (no benefit)
+        assert!(!parser.would_use_parallel(&doc));
+    }
+
+    #[test]
+    fn test_would_use_parallel_disabled_by_config() {
+        use crate::config::ParserConfig;
+        
+        // Explicitly disable parallelism
+        let parser = AlsParser::with_config(
+            ParserConfig::new().with_parallelism(1)
+        );
+        let doc = parser.parse("#col1 #col2\n1>100|1>100").unwrap();
+        
+        // Should not use parallel even with large data when disabled
+        assert!(!parser.would_use_parallel(&doc));
+    }
+
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn test_would_use_parallel_large_doc() {
+        let parser = AlsParser::new();
+        // Create a document with multiple columns and many rows
+        // 500 * 3 = 1500 > 1000 threshold
+        let doc = parser.parse("#col1 #col2 #col3\n1>500|1>500|1>500").unwrap();
+        
+        assert!(parser.would_use_parallel(&doc));
+    }
+
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn test_expand_parallel_produces_same_result() {
+        let parser = AlsParser::new();
+        let als = "#id #name #status\n1>50|alice*25 bob*25|active*50";
+        let doc = parser.parse(als).unwrap();
+        
+        // Expand using both methods
+        let sequential_result = parser.expand(&doc).unwrap();
+        let parallel_result = parser.expand_parallel(&doc).unwrap();
+        
+        // Results should be identical
+        assert_eq!(sequential_result.len(), parallel_result.len());
+        for (seq_row, par_row) in sequential_result.iter().zip(parallel_result.iter()) {
+            assert_eq!(seq_row, par_row);
+        }
+    }
+
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn test_expand_parallel_empty_doc() {
+        let parser = AlsParser::new();
+        let doc = parser.parse("").unwrap();
+        
+        let result = parser.expand_parallel(&doc).unwrap();
+        
+        assert!(result.is_empty());
+    }
+
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn test_expand_parallel_with_dictionary() {
+        let parser = AlsParser::new();
+        // Use proper ALS syntax: dictionary refs with multiplier need parentheses or separate tokens
+        let als = "$default:red|green|blue\n#col1 #col2\n(_0)*10 (_1)*10 (_2)*10|1>30";
+        let doc = parser.parse(als).unwrap();
+        
+        let result = parser.expand_parallel(&doc).unwrap();
+        
+        assert_eq!(result.len(), 30);
+        assert_eq!(result[0][0], "red");
+        assert_eq!(result[10][0], "green");
+        assert_eq!(result[20][0], "blue");
+    }
+
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn test_expand_parallel_with_custom_threads() {
+        use crate::config::ParserConfig;
+        
+        let parser = AlsParser::with_config(
+            ParserConfig::new().with_parallelism(2)
+        );
+        let als = "#col1 #col2\n1>50|alice*50";
+        let doc = parser.parse(als).unwrap();
+        
+        let result = parser.expand_parallel(&doc).unwrap();
+        
+        assert_eq!(result.len(), 50);
+        assert_eq!(result[0], vec!["1", "alice"]);
+        assert_eq!(result[49], vec!["50", "alice"]);
+    }
+
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn test_expand_parallel_complex_patterns() {
+        let parser = AlsParser::new();
+        let als = "#id #toggle #range\n1>20|(T~F*20)|10>200:10";
+        let doc = parser.parse(als).unwrap();
+        
+        let sequential = parser.expand(&doc).unwrap();
+        let parallel = parser.expand_parallel(&doc).unwrap();
+        
+        // Both should produce identical results
+        assert_eq!(sequential, parallel);
+        assert_eq!(sequential.len(), 20);
     }
 }

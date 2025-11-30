@@ -119,7 +119,7 @@ impl AlsSerializer {
     }
 
     /// Serialize column streams.
-    fn serialize_streams(&self, output: &mut String, doc: &AlsDocument) {
+    pub fn serialize_streams(&self, output: &mut String, doc: &AlsDocument) {
         for (i, stream) in doc.streams.iter().enumerate() {
             if i > 0 {
                 output.push('|');

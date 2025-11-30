@@ -32,7 +32,7 @@ pyo3 = { version = "0.27", features = ["extension-module"], optional = true }
 
 # Async runtime (not for WASM)
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tokio = { version = "1.48", features = ["rt-multi-thread", "macros"], optional = true }
+tokio = { version = "1.48", features = ["rt-multi-thread", "macros", "time"], optional = true }
 
 # WASM bindings (optional)
 [target.'cfg(target_arch = "wasm32")'.dependencies]

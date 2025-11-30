@@ -119,26 +119,41 @@ The library consists of several key components:
 - **Adaptive HashMap**: Automatically selects HashMap or DashMap based on dataset size
 - **Streaming Support**: Process large files without loading entirely into memory
 
+## Language Bindings
+
+### C FFI
+
+The library provides a C-compatible FFI for use from C and other languages with C interop:
+
+```bash
+# Build with FFI support
+cd app/lib
+cargo build --release --features ffi
+```
+
+See [C_FFI_README.md](app/lib/C_FFI_README.md) for detailed documentation and examples.
+
+### Python
+
+Python bindings are available via PyO3:
+
+```bash
+cargo build --release --features python
+```
+
+### Other Languages
+
+- **Go**: CGO bindings (planned)
+- **WebAssembly**: WASM bindings (planned)
+- **Node.js**: Native addon (planned)
+
 ## Requirements
 
 - Rust 1.70 or later
 - For Python bindings: Python 3.8+
+- For C FFI: GCC or Clang
 - For WebAssembly: wasm-pack
 
 ## License
 
-Licensed under the Apache License, Version 2.0. See LICENSE file for details.
-
-## Contributing
-
-Contributions are welcome! Please ensure:
-- All tests pass: `cargo test`
-- Code is formatted: `cargo fmt`
-- No clippy warnings: `cargo clippy`
-- Documentation is updated
-
-## References
-
-- [ALS Format Specification](./docs/als-format.md)
-- [Design Document](../../.kiro/specs/als-compression/design.md)
-- [Requirements](../../.kiro/specs/als-compression/requirements.md)
+Licensed under the Apache-2.0. See LICENSE file for details.

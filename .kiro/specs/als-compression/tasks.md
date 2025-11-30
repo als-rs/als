@@ -186,14 +186,14 @@
     - Implement common map operations
     - _Requirements: 5.1, 5.2, 5.3, 5.4_
 
-- [ ] 12. Main Compressor
-  - [ ] 12.1 Implement AlsCompressor core
+- [x] 12. Main Compressor
+  - [x] 12.1 Implement AlsCompressor core
     - Create AlsCompressor struct with config and simd dispatcher
     - Implement compress() method for TabularData
     - Wire pattern detection and dictionary building
     - _Requirements: 1.1, 2.1_
 
-  - [ ] 12.2 Implement CTX fallback
+  - [x] 12.2 Implement CTX fallback
     - Calculate ALS compression ratio
     - Fall back to CTX when below threshold
     - Set format indicator appropriately
@@ -203,24 +203,24 @@
     - **Property 18: CTX Fallback Correctness**
     - **Validates: Requirements 4.2, 4.3, 4.4**
 
-  - [ ] 12.4 Implement compression statistics
+  - [x] 12.4 Implement compression statistics
     - Create CompressionStats with atomic counters
     - Track input/output bytes, patterns used
     - Report per-column effectiveness
     - _Requirements: 21.1, 21.2, 21.3, 21.4_
 
-- [ ] 14. CSV Conversion
-  - [ ] 14.1 Implement CSV parser
+- [x] 14. CSV Conversion
+  - [x] 14.1 Implement CSV parser
     - Parse CSV to TabularData
     - Infer column types
     - Handle edge cases (empty, single row/column)
     - _Requirements: 1.1, 32.1, 32.2, 32.3_
 
-  - [ ] 14.2 Implement CSV writer
+  - [x] 14.2 Implement CSV writer
     - Convert TabularData to CSV string
     - _Requirements: 3.1_
 
-  - [ ] 14.3 Wire CSV compression pipeline
+  - [x] 14.3 Wire CSV compression pipeline
     - Implement compress_csv() method
     - Implement to_csv() method on parser
     - _Requirements: 1.1, 3.1_
@@ -229,19 +229,19 @@
     - **Property 1: CSV Round-Trip Equivalence**
     - **Validates: Requirements 1.1, 3.1, 3.6, 11.6**
 
-- [ ] 15. JSON Conversion
-  - [ ] 15.1 Implement JSON parser
+- [x] 15. JSON Conversion
+  - [x] 15.1 Implement JSON parser
     - Parse JSON array of objects to TabularData
     - Handle nested objects with dot-notation flattening
     - Handle null values
     - _Requirements: 2.1, 2.2, 2.4, 2.5_
 
-  - [ ] 15.2 Implement JSON writer
+  - [x] 15.2 Implement JSON writer
     - Convert TabularData to JSON array
     - Reconstruct nested objects from dot-notation
     - _Requirements: 3.1_
 
-  - [ ] 15.3 Wire JSON compression pipeline
+  - [x] 15.3 Wire JSON compression pipeline
     - Implement compress_json() method
     - Implement to_json() method on parser
     - _Requirements: 2.1, 3.1_
@@ -258,8 +258,8 @@
     - **Property 23: Nested JSON Flattening**
     - **Validates: Requirements 2.4**
 
-- [ ] 17. Unicode and Special Character Support
-  - [ ] 17.1 Implement Unicode handling
+- [-] 17. Unicode and Special Character Support
+  - [x] 17.1 Implement Unicode handling
     - Ensure UTF-8 preservation throughout pipeline
     - Handle emoji, RTL text, combining characters
     - _Requirements: 33.1, 33.2, 33.3, 33.4_
@@ -272,7 +272,7 @@
     - **Property 16: Whitespace Preservation**
     - **Validates: Requirements 32.8**
 
-  - [ ] 17.4 Implement floating point handling
+  - [x] 17.4 Implement floating point handling
     - Preserve precision in round-trip
     - Detect floating point patterns
     - _Requirements: 18.1, 18.2, 18.3_
@@ -281,39 +281,39 @@
     - **Property 17: Floating Point Precision**
     - **Validates: Requirements 18.1, 18.2, 18.3, 18.4**
 
-- [ ] 18. SIMD Implementation
-  - [ ] 18.1 Implement SIMD dispatcher
+- [x] 18. SIMD Implementation
+  - [x] 18.1 Implement SIMD dispatcher
     - Create SimdDispatcher with runtime CPU detection
     - Create CpuFeatures struct
     - _Requirements: 6.5_
 
-  - [ ] 18.2 Implement scalar fallback
+  - [x] 18.2 Implement scalar fallback
     - Create scalar implementations for all SIMD operations
     - expand_range, find_runs
     - _Requirements: 6.4_
 
-  - [ ] 18.3 Implement AVX2 operations
+  - [x] 18.3 Implement AVX2 operations
     - Range expansion with AVX2
     - Pattern detection with AVX2
     - _Requirements: 6.1_
 
-  - [ ] 18.4 Implement AVX-512 operations
+  - [x] 18.4 Implement AVX-512 operations
     - Range expansion with AVX-512
     - Pattern detection with AVX-512
     - _Requirements: 6.2_
 
-  - [ ] 18.5 Implement NEON operations (ARM64)
+  - [x] 18.5 Implement NEON operations (ARM64)
     - Range expansion with NEON
     - Pattern detection with NEON
     - _Requirements: 6.3_
 
-- [ ] 19. Parallel Processing
-  - [ ] 19.1 Implement parallel compression
+- [x] 19. Parallel Processing
+  - [x] 19.1 Implement parallel compression
     - Use Rayon for column-parallel compression
     - Implement size threshold for parallel vs sequential
     - _Requirements: 20.1, 20.2, 20.3, 20.4_
 
-  - [ ] 19.2 Implement parallel decompression
+  - [x] 19.2 Implement parallel decompression
     - Use Rayon for column-parallel expansion
     - Maintain correct column alignment during zip
     - _Requirements: 25.1, 25.2, 25.3, 25.4_
@@ -322,13 +322,13 @@
     - **Property 19: Parallel Processing Equivalence**
     - **Validates: Requirements 20.1, 20.2, 25.1, 25.2, 31.1, 31.2**
 
-- [ ] 20. Thread Safety and Atomics
-  - [ ] 20.1 Implement thread-safe statistics
+- [x] 20. Thread Safety and Atomics
+  - [x] 20.1 Implement thread-safe statistics
     - Use atomic operations for all counters
     - Ensure lock-free reads where possible
     - _Requirements: 8.1, 8.2_
 
-  - [ ] 20.2 Ensure API thread safety
+  - [x] 20.2 Ensure API thread safety
     - Verify Send + Sync bounds on public types
     - Document thread safety guarantees
     - _Requirements: 8.3, 8.4_
@@ -337,49 +337,46 @@
     - **Property 20: Concurrent Access Correctness**
     - **Validates: Requirements 8.1, 8.2, 8.3, 8.4, 5.4**
 
-- [ ] 22. Streaming Support
-  - [ ] 22.1 Implement StreamingCompressor
+- [x] 22. Streaming Support
+  - [x] 22.1 Implement StreamingCompressor
     - Process input in chunks
     - Yield ALS fragments
     - _Requirements: 15.1, 15.2, 15.3_
 
-  - [ ] 22.2 Implement StreamingParser
+  - [x] 22.2 Implement StreamingParser
     - Parse ALS in streaming fashion
     - Yield rows incrementally
     - _Requirements: 15.4_
 
-- [ ] 23. Async Support
-  - [ ] 23.1 Implement async compression
+- [x] 23. Async Support
+  - [x] 23.1 Implement async compression
     - Create compress_csv_async, compress_json_async
     - Integrate with Tokio runtime
     - _Requirements: 31.1, 31.3_
 
-  - [ ] 23.2 Implement async decompression
+  - [x] 23.2 Implement async decompression
     - Create async parser methods
     - Support cancellation
     - _Requirements: 31.2, 31.4, 31.5_
 
-- [ ] 24. Public API Finalization
-  - [ ] 24.1 Create lib.rs with public exports
+- [x] 24. Public API Finalization
+  - [x] 24.1 Create lib.rs with public exports
     - Export AlsCompressor, AlsParser
     - Export configuration types
     - Export error types
     - Export streaming types
     - _Requirements: All_
 
-  - [ ] 24.2 Implement AlsParser public methods
+  - [x] 24.2 Implement AlsParser public methods
     - Implement to_csv() method
     - Implement to_json() method
     - Implement parse() method returning TabularData
     - _Requirements: 3.1, 4.4_
 
-  - [ ] 24.3 Add documentation
+  - [x] 24.3 Add documentation
     - Document all public APIs
     - Add usage examples
     - _Requirements: All_
-
-- [ ] 25. Checkpoint - Ensure all tests pass
-  - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 26. Benchmark Suite
   - [ ] 26.1 Implement compression benchmarks
@@ -393,30 +390,10 @@
     - Measure latency percentiles (p50, p95, p99)
     - _Requirements: 9.2, 35.2_
 
-  - [ ] 26.3 Implement SIMD benchmarks
-    - Compare SIMD vs scalar performance
-    - Benchmark individual operations (range expansion, pattern detection)
-    - _Requirements: 9.5, 35.4, 35.10_
-
-  - [ ] 26.4 Implement parallel benchmarks
-    - Compare single-threaded vs parallel
-    - Test at various thread counts
-    - _Requirements: 35.3_
-
-  - [ ] 26.5 Implement comparison benchmarks
-    - Compare against gzip, lz4, zstd
-    - Generate reports in JSON and human-readable formats
-    - _Requirements: 9.3, 35.7, 35.8_
-
   - [ ] 26.6 Implement memory benchmarks
     - Measure memory allocation counts
     - Measure peak memory usage
     - _Requirements: 35.6_
-
-  - [ ] 26.7 Configure criterion.rs
-    - Set up statistical analysis
-    - Configure HTML report generation
-    - _Requirements: 35.9_
 
 - [ ] 27. Edge Case Tests
   - [ ] 27.1 Implement edge case test suite
@@ -451,8 +428,8 @@
     - Verify identical behavior across platforms
     - _Requirements: 36.4, 36.5, 36.7_
 
-- [ ] 30. Python Bindings (PyO3)
-  - [ ] 30.1 Implement Python bindings
+- [x] 30. Python Bindings (PyO3)
+  - [x] 30.1 Implement Python bindings
     - Create PyAlsCompressor class
     - Create PyAlsParser class
     - Implement compress_csv, compress_json methods
@@ -463,8 +440,8 @@
     - Support numpy array conversion
     - _Requirements: 26.5, 26.6_
 
-- [ ] 31. C FFI Bindings
-  - [ ] 31.1 Implement C FFI
+- [x] 31. C FFI Bindings
+  - [x] 31.1 Implement C FFI
     - Create C-compatible functions
     - Generate header file
     - Implement memory management functions
@@ -489,3 +466,86 @@
     - Support Buffer objects
     - Implement stream interfaces
     - _Requirements: 30.1, 30.2, 30.3, 30.4, 30.5_
+
+- [-] 35. CLI Application Setup
+  - [x] 35.1 Create CLI project structure
+    - Create `app/cli` directory
+    - Create `app/cli/Cargo.toml` with clap dependency and workspace configuration
+    - Add CLI to workspace members in root Cargo.toml
+    - Create `app/cli/src/main.rs` with basic structure
+    - _Requirements: All (CLI interface to library)_
+
+  - [x] 35.2 Implement command-line argument parsing
+    - Define CLI structure with clap derive macros
+    - Add subcommands: compress, decompress, info
+    - Add global options: --verbose, --quiet, --config
+    - Add format options: --format (csv/json/als)
+    - Add input/output options: --input, --output (support stdin/stdout)
+    - _Requirements: 1.1, 2.1, 3.1_
+
+  - [x] 35.3 Implement compress subcommand
+    - Parse compress command arguments
+    - Read input from file or stdin
+    - Detect input format (CSV/JSON) or use --format flag
+    - Call library compression functions
+    - Write output to file or stdout
+    - Handle errors and display user-friendly messages
+    - _Requirements: 1.1, 2.1_
+
+  - [x] 35.4 Implement decompress subcommand
+    - Parse decompress command arguments
+    - Read ALS input from file or stdin
+    - Specify output format (CSV/JSON) via --format flag
+    - Call library decompression functions
+    - Write output to file or stdout
+    - Handle errors and display user-friendly messages
+    - _Requirements: 3.1, 4.4_
+
+  - [x] 35.5 Implement info subcommand
+    - Parse info command arguments
+    - Read ALS input from file or stdin
+    - Display compression statistics (ratio, patterns used, etc.)
+    - Display document metadata (version, columns, rows)
+    - Show dictionary contents if present
+    - _Requirements: 21.1, 21.2, 21.3, 21.4, 22.1_
+
+  - [ ] 35.6 Add configuration file support
+    - Support loading config from file (TOML/JSON)
+    - Allow overriding config with CLI flags
+    - Implement --config flag to specify config file path
+    - Map config file options to CompressorConfig
+    - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.5_
+
+  - [ ] 35.7 Add progress reporting and logging
+    - Implement progress bar for large files
+    - Add --verbose flag for detailed logging
+    - Add --quiet flag to suppress non-error output
+    - Use appropriate logging levels (info, warn, error)
+    - Display timing information for operations
+    - _Requirements: 9.1, 9.2_
+
+  - [ ] 35.8 Add batch processing support
+    - Support multiple input files
+    - Add --recursive flag for directory processing
+    - Add --pattern flag for glob pattern matching
+    - Preserve directory structure in output
+    - Display summary statistics for batch operations
+    - _Requirements: 15.1, 15.2_
+
+  - [ ]* 35.9 Write integration tests for CLI
+    - Test compress command with CSV input
+    - Test compress command with JSON input
+    - Test decompress command with ALS input
+    - Test info command output
+    - Test stdin/stdout piping
+    - Test error handling and exit codes
+    - Test batch processing
+    - _Requirements: 34.3, 34.4_
+
+  - [ ] 35.10 Add CLI documentation
+    - Write comprehensive help text for all commands
+    - Add examples to help output
+    - Create README.md in app/cli with usage examples
+    - Document all flags and options
+    - Add man page generation (optional)
+    - _Requirements: All_

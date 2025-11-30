@@ -348,12 +348,21 @@ impl<'a> Value<'a> {
     }
 
     /// Convert the value to a string representation.
+    ///
+    /// For ALS format, null values are represented as `NULL_TOKEN` and
+    /// empty strings as `EMPTY_TOKEN`.
     pub fn to_string_repr(&self) -> Cow<'_, str> {
         match self {
-            Value::Null => Cow::Borrowed(""),
+            Value::Null => Cow::Borrowed(crate::als::NULL_TOKEN),
             Value::Integer(i) => Cow::Owned(i.to_string()),
             Value::Float(f) => Cow::Owned(f.to_string()),
-            Value::String(s) => Cow::Borrowed(s.as_ref()),
+            Value::String(s) => {
+                if s.is_empty() {
+                    Cow::Borrowed(crate::als::EMPTY_TOKEN)
+                } else {
+                    Cow::Borrowed(s.as_ref())
+                }
+            }
             Value::Boolean(b) => Cow::Borrowed(if *b { "true" } else { "false" }),
         }
     }
@@ -603,10 +612,11 @@ mod tests {
 
     #[test]
     fn test_value_to_string_repr() {
-        assert_eq!(Value::Null.to_string_repr(), "");
+        assert_eq!(Value::Null.to_string_repr(), crate::als::NULL_TOKEN);
         assert_eq!(Value::Integer(42).to_string_repr(), "42");
         assert_eq!(Value::Float(3.14).to_string_repr(), "3.14");
         assert_eq!(Value::string("hello").to_string_repr(), "hello");
+        assert_eq!(Value::string("").to_string_repr(), crate::als::EMPTY_TOKEN);
         assert_eq!(Value::Boolean(true).to_string_repr(), "true");
         assert_eq!(Value::Boolean(false).to_string_repr(), "false");
     }

@@ -18,39 +18,17 @@ Cargo.lock
 .settings/
 *.sublime-workspace
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
 # WASM
 pkg/
 wasm-pack.log
-
-# Benchmark results
-*.json
 
 # Test coverage
 *.profraw
 *.profdata
 /coverage/
+
+# Datasets
+datasets
 
 # Local development
 .env

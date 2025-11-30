@@ -24,11 +24,31 @@ pub const DEFAULT_THRESHOLD: usize = 10_000;
 ///
 /// # Thread Safety
 ///
-/// - `Small` variant is NOT thread-safe for concurrent writes
-/// - `Large` variant IS thread-safe for concurrent reads and writes
+/// `AdaptiveMap` implements `Send + Sync` when its key and value types do,
+/// allowing it to be shared across threads. However, the thread safety
+/// characteristics differ between variants:
 ///
-/// For concurrent access, ensure you use the `Large` variant or handle
-/// synchronization externally for the `Small` variant.
+/// ## Small Variant (HashMap)
+///
+/// The `Small` variant uses a standard `HashMap` which is NOT thread-safe
+/// for concurrent writes. If you need to mutate a `Small` variant from
+/// multiple threads, you must use external synchronization (e.g., `Mutex`).
+///
+/// ## Large Variant (DashMap)
+///
+/// The `Large` variant uses `DashMap`, which provides:
+/// - **Lock-free reads**: Multiple threads can read concurrently without blocking
+/// - **Fine-grained locking for writes**: Writes only lock individual shards,
+///   allowing high concurrency
+/// - **Atomic operations**: All operations are thread-safe
+///
+/// ## Choosing the Right Variant
+///
+/// - Use `Small` (below threshold) for single-threaded access or when you
+///   control synchronization externally
+/// - Use `Large` (above threshold) for concurrent access from multiple threads
+///
+/// The threshold can be configured via [`with_capacity_threshold`](Self::with_capacity_threshold).
 ///
 /// # Example
 ///
@@ -42,6 +62,30 @@ pub const DEFAULT_THRESHOLD: usize = 10_000;
 /// // Create a map that will use DashMap (above threshold)
 /// let large_map: AdaptiveMap<String, i32> = AdaptiveMap::with_capacity_threshold(20_000, 10_000);
 /// assert!(large_map.is_large());
+/// ```
+///
+/// # Concurrent Access Example
+///
+/// ```rust,ignore
+/// use als_compression::hashmap::AdaptiveMap;
+/// use std::sync::Arc;
+/// use std::thread;
+///
+/// // Create a large map for concurrent access
+/// let map: Arc<AdaptiveMap<String, i32>> = Arc::new(
+///     AdaptiveMap::with_capacity_threshold(20_000, 10_000)
+/// );
+/// assert!(map.is_large());
+///
+/// // Multiple threads can access concurrently
+/// let handles: Vec<_> = (0..4).map(|i| {
+///     let map = Arc::clone(&map);
+///     thread::spawn(move || {
+///         // Note: For mutable operations, you'd need interior mutability
+///         // or use the DashMap directly
+///         map.len()
+///     })
+/// }).collect();
 /// ```
 #[derive(Debug)]
 pub enum AdaptiveMap<K, V>

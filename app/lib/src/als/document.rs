@@ -15,6 +15,15 @@ use super::AlsOperator;
 /// - A schema defining column names
 /// - Column streams containing compressed data
 /// - A format indicator (ALS or CTX fallback)
+///
+/// # Thread Safety
+///
+/// `AlsDocument` is `Send + Sync`, meaning it can be safely shared across
+/// threads. The document is typically created by compression operations and
+/// then shared for serialization or further processing.
+///
+/// Note that while the document can be shared, concurrent mutation requires
+/// external synchronization. For read-only access, no synchronization is needed.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AlsDocument {
     /// ALS format version (currently 1).
