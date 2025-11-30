@@ -287,7 +287,7 @@ pub use als::{
     NULL_TOKEN,
 };
 pub use config::{CompressorConfig, ParserConfig, SimdConfig};
-pub use convert::{Column, ColumnType, TabularData, Value, parse_syslog, to_syslog, MessageType, SyslogEntry};
+pub use convert::{Column, ColumnType, TabularData, Value, parse_syslog, to_syslog, MessageType, SyslogEntry, parse_syslog_optimized};
 pub use error::{AlsError, Result};
 pub use pattern::{
     CombinedDetector, DetectionResult, PatternDetector, PatternEngine, PatternType,
