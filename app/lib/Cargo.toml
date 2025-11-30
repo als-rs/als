@@ -52,3 +52,10 @@ python = ["pyo3"]
 ffi = []
 wasm = ["wasm-bindgen", "js-sys"]
 async = ["tokio"]
+
+[profile.release]
+opt-level = 3           # Maximum optimization
+lto = "fat"             # Full link-time optimization
+codegen-units = 1       # Better optimization, slower compile
+strip = true            # Strip symbols for smaller binary
+panic = "abort"         # Smaller binary, no unwinding

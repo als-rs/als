@@ -7,12 +7,12 @@
     - Set up `cdylib` and `rlib` crate types
     - _Requirements: All_
 
-  - [ ] 1.2 Create error types module
+  - [x] 1.2 Create error types module
     - Implement `AlsError` enum with thiserror derive
     - Include all error variants: CsvParseError, JsonParseError, AlsSyntaxError, InvalidDictRef, RangeOverflow, VersionMismatch, ColumnMismatch, IoError
     - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5_
 
-  - [ ] 1.3 Create configuration module
+  - [x] 1.3 Create configuration module
     - Implement `CompressorConfig` with all fields (ctx_fallback_threshold, hashmap_threshold, min_pattern_length, simd_config, parallelism)
     - Implement `ParserConfig` struct
     - Implement `SimdConfig` struct
@@ -20,8 +20,8 @@
     - Implement `Default` trait with sensible defaults
     - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.5_
 
-- [ ] 2. Core Data Structures
-  - [ ] 2.1 Implement ALS operator types
+- [-] 2. Core Data Structures
+  - [x] 2.1 Implement ALS operator types
     - Create `AlsOperator` enum with Raw, Range, Multiply, Toggle, DictRef variants
     - Add rkyv derives for zero-copy serialization
     - Implement `range_safe` constructor with overflow checking
@@ -39,21 +39,21 @@
     - **Property 6: Toggle Operator Correctness**
     - **Validates: Requirements 3.5**
 
-  - [ ] 2.5 Implement ALS document structure
+  - [x] 2.5 Implement ALS document structure
     - Create `AlsDocument` struct with version, dictionaries, schema, streams, format_indicator
     - Create `ColumnStream` struct
     - Create `FormatIndicator` enum (Als, Ctx)
     - _Requirements: 11.1, 22.1_
 
-  - [ ] 2.6 Implement tabular data model
+  - [x] 2.6 Implement tabular data model
     - Create `TabularData<'a>` with zero-copy support using `Cow<'a, str>`
     - Create `Column<'a>` struct with name, values, inferred_type
     - Create `Value<'a>` enum (Null, Integer, Float, String, Boolean)
     - Create `ColumnType` enum
     - _Requirements: 7.1, 7.4_
 
-- [ ] 3. Escape Sequence Handling
-  - [ ] 3.1 Implement escape/unescape functions
+- [x] 3. Escape Sequence Handling
+  - [x] 3.1 Implement escape/unescape functions
     - Create `escape_als_string()` function for all ALS operators
     - Create `unescape_als_string()` function
     - Define reserved tokens (NULL_TOKEN, EMPTY_TOKEN)
@@ -63,17 +63,14 @@
     - **Property 14: Escape Sequence Preservation**
     - **Validates: Requirements 24.1, 24.2, 24.3, 24.4**
 
-- [ ] 4. Checkpoint - Ensure all tests pass
-  - Ensure all tests pass, ask the user if questions arise.
-
-- [ ] 5. ALS Parser Implementation
-  - [ ] 5.1 Implement ALS tokenizer
+- [x] 5. ALS Parser Implementation
+  - [x] 5.1 Implement ALS tokenizer
     - Create lexer for ALS format tokens
     - Handle version prefix (!v), dictionary ($), schema (#), operators
     - Support escape sequence parsing
     - _Requirements: 11.3_
 
-  - [ ] 5.2 Implement ALS parser core
+  - [x] 5.2 Implement ALS parser core
     - Parse dictionary headers
     - Parse schema definitions
     - Parse column streams separated by |
@@ -84,7 +81,7 @@
     - **Property 7: Dictionary Reference Resolution**
     - **Validates: Requirements 3.4, 11.5**
 
-  - [ ] 5.4 Implement version detection and compatibility
+  - [x] 5.4 Implement version detection and compatibility
     - Detect format version from input
     - Apply version-specific parsing rules
     - Return error for unknown versions
@@ -94,15 +91,15 @@
     - **Property 21: Version Compatibility**
     - **Validates: Requirements 22.1, 22.2, 22.3**
 
-- [ ] 6. ALS Serializer Implementation
-  - [ ] 6.1 Implement ALS serializer core
+- [x] 6. ALS Serializer Implementation
+  - [x] 6.1 Implement ALS serializer core
     - Serialize version header
     - Serialize dictionary headers
     - Serialize schema
     - Serialize column streams with | separator
     - _Requirements: 11.1, 11.2, 22.1_
 
-  - [ ] 6.2 Implement pretty printer
+  - [x] 6.2 Implement pretty printer
     - Format ALS with visual separation
     - Add debug comments showing expanded values
     - _Requirements: 19.1, 19.2, 19.3_
@@ -111,17 +108,14 @@
     - **Property 3: ALS Format Round-Trip**
     - **Validates: Requirements 11.6, 19.4**
 
-- [ ] 7. Checkpoint - Ensure all tests pass
-  - Ensure all tests pass, ask the user if questions arise.
-
-- [ ] 8. Pattern Detection Engine
-  - [ ] 8.1 Implement pattern detector trait and infrastructure
+- [x] 8. Pattern Detection Engine
+  - [x] 8.1 Implement pattern detector trait and infrastructure
     - Create `PatternDetector` trait
     - Create `DetectionResult` struct
     - Create `PatternType` enum
     - _Requirements: 10.5, 10.6_
 
-  - [ ] 8.2 Implement sequential range detection
+  - [x] 8.2 Implement sequential range detection
     - Detect consecutive integers with step 1
     - Detect arithmetic sequences with custom step
     - Support descending sequences (negative step)
@@ -131,7 +125,7 @@
     - **Property 9: Sequential Range Detection**
     - **Validates: Requirements 1.2, 10.1**
 
-  - [ ] 8.4 Implement repetition detection
+  - [x] 8.4 Implement repetition detection
     - Detect consecutive identical values
     - Respect min_pattern_length configuration
     - _Requirements: 1.3, 10.2_
@@ -140,7 +134,7 @@
     - **Property 10: Repetition Detection**
     - **Validates: Requirements 1.3, 10.2, 32.4**
 
-  - [ ] 8.6 Implement alternation/toggle detection
+  - [x] 8.6 Implement alternation/toggle detection
     - Detect alternating two-value patterns
     - Support toggle syntax generation
     - _Requirements: 1.4, 10.3_
@@ -149,7 +143,7 @@
     - **Property 11: Alternation Detection**
     - **Validates: Requirements 1.4, 10.3**
 
-  - [ ] 8.8 Implement combined pattern detection
+  - [x] 8.8 Implement combined pattern detection
     - Detect repeated range patterns (1>3*2)
     - Detect repeated alternating patterns
     - _Requirements: 10.4, 13.1, 13.2, 13.3_
@@ -158,7 +152,7 @@
     - **Property 12: Combined Pattern Detection**
     - **Validates: Requirements 10.4, 13.1, 13.2**
 
-  - [ ] 8.10 Implement pattern selection optimizer
+  - [x] 8.10 Implement pattern selection optimizer
     - Compare compression ratios of detected patterns
     - Select optimal encoding
     - Fall back to raw encoding when no benefit
@@ -168,17 +162,14 @@
     - **Property 8: Pattern Detection Optimality**
     - **Validates: Requirements 10.5, 13.3**
 
-- [ ] 9. Checkpoint - Ensure all tests pass
-  - Ensure all tests pass, ask the user if questions arise.
-
-- [ ] 10. Dictionary Builder
-  - [ ] 10.1 Implement dictionary builder
+- [x] 10. Dictionary Builder
+  - [x] 10.1 Implement dictionary builder
     - Track string frequencies
     - Calculate compression benefit of dictionary references
     - Build optimal dictionary
     - _Requirements: 1.5, 14.1, 14.2, 14.3_
 
-  - [ ] 10.2 Implement enum/boolean detector
+  - [x] 10.2 Implement enum/boolean detector
     - Detect columns with limited distinct values
     - Normalize boolean representations
     - Auto-create dictionaries for enum-like columns
@@ -188,8 +179,8 @@
     - **Property 13: Dictionary Benefit Threshold**
     - **Validates: Requirements 14.1, 14.2, 14.3, 14.4**
 
-- [ ] 11. Adaptive HashMap
-  - [ ] 11.1 Implement AdaptiveMap
+- [x] 11. Adaptive HashMap
+  - [x] 11.1 Implement AdaptiveMap
     - Create enum with Small(HashMap) and Large(DashMap) variants
     - Implement with_capacity_threshold constructor
     - Implement common map operations
@@ -217,9 +208,6 @@
     - Track input/output bytes, patterns used
     - Report per-column effectiveness
     - _Requirements: 21.1, 21.2, 21.3, 21.4_
-
-- [ ] 13. Checkpoint - Ensure all tests pass
-  - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 14. CSV Conversion
   - [ ] 14.1 Implement CSV parser
@@ -269,9 +257,6 @@
   - [ ]* 15.6 Write property test for nested JSON flattening
     - **Property 23: Nested JSON Flattening**
     - **Validates: Requirements 2.4**
-
-- [ ] 16. Checkpoint - Ensure all tests pass
-  - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 17. Unicode and Special Character Support
   - [ ] 17.1 Implement Unicode handling
@@ -351,9 +336,6 @@
   - [ ]* 20.3 Write property test for concurrent access correctness
     - **Property 20: Concurrent Access Correctness**
     - **Validates: Requirements 8.1, 8.2, 8.3, 8.4, 5.4**
-
-- [ ] 21. Checkpoint - Ensure all tests pass
-  - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 22. Streaming Support
   - [ ] 22.1 Implement StreamingCompressor
@@ -507,25 +489,3 @@
     - Support Buffer objects
     - Implement stream interfaces
     - _Requirements: 30.1, 30.2, 30.3, 30.4, 30.5_
-
-- [ ] 35. Cross-Platform Verification
-  - [ ] 35.1 Verify macOS compatibility
-    - Test on macOS (Intel and Apple Silicon if available)
-    - Verify SIMD detection (AVX2 on Intel, NEON on ARM)
-    - Test FFI bindings produce .dylib
-    - _Requirements: 36.1, 36.6, 36.8_
-
-  - [ ] 35.2 Verify Linux compatibility
-    - Test on Linux x86_64
-    - Verify SIMD detection (AVX2/AVX-512)
-    - Test FFI bindings produce .so
-    - _Requirements: 36.3, 36.6, 36.8_
-
-  - [ ] 35.3 Verify Windows compatibility
-    - Test on Windows x86_64
-    - Verify SIMD detection (AVX2/AVX-512)
-    - Test FFI bindings produce .dll
-    - _Requirements: 36.2, 36.6, 36.8_
-
-- [ ] 36. Final Checkpoint - Ensure all tests pass
-  - Ensure all tests pass on all platforms (macOS, Windows, Linux), ask the user if questions arise.
