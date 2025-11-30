@@ -137,6 +137,7 @@ impl<'a> Tokenizer<'a> {
                     Some('_') => result.push('_'),
                     Some('#') => result.push('#'),
                     Some('$') => result.push('$'),
+                    Some(':') => result.push(':'),
                     Some('\\') => result.push('\\'),
                     Some('n') => result.push('\n'),
                     Some('t') => result.push('\t'),
@@ -208,15 +209,35 @@ impl<'a> Tokenizer<'a> {
                     self.next_char();
                 }
                 'e' | 'E' if !has_exp => {
-                    has_exp = true;
-                    num_str.push(c);
-                    self.next_char();
-                    // Handle optional sign after exponent
-                    if let Some(sign) = self.peek_char() {
-                        if sign == '+' || sign == '-' {
-                            num_str.push(sign);
+                    // Only treat as exponent if followed by digit or sign+digit
+                    // We need to look ahead without consuming
+                    let chars_vec: Vec<char> = self.input[self.position..].chars().take(3).collect();
+                    if chars_vec.len() >= 2 {
+                        let next_is_sign = chars_vec[1] == '+' || chars_vec[1] == '-';
+                        let has_digit_after = if next_is_sign && chars_vec.len() >= 3 {
+                            chars_vec[2].is_ascii_digit()
+                        } else {
+                            chars_vec[1].is_ascii_digit()
+                        };
+                        
+                        if has_digit_after {
+                            has_exp = true;
+                            num_str.push(c);
                             self.next_char();
+                            // Handle optional sign after exponent
+                            if let Some(sign) = self.peek_char() {
+                                if sign == '+' || sign == '-' {
+                                    num_str.push(sign);
+                                    self.next_char();
+                                }
+                            }
+                        } else {
+                            // Not a valid exponent, stop here
+                            break;
                         }
+                    } else {
+                        // Not enough characters for valid exponent
+                        break;
                     }
                 }
                 _ => break,

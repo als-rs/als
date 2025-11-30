@@ -23,6 +23,13 @@ clap = { version = "4.5", features = ["derive", "cargo", "wrap_help"] }
 # Error handling
 anyhow = "1.0"
 
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# Progress bar
+indicatif = "0.17"
+
 # Async runtime for async operations
 tokio = { version = "1.48", features = ["rt-multi-thread", "macros", "fs", "io-util"] }
 

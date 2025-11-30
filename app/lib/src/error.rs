@@ -24,6 +24,17 @@ pub enum AlsError {
         message: String,
     },
 
+    /// Error parsing log file input.
+    ///
+    /// Contains the line number and a descriptive message.
+    #[error("Log parsing error at line {line}: {message}")]
+    LogParseError {
+        /// Line number where the error occurred (1-indexed)
+        line: usize,
+        /// Description of the parsing error
+        message: String,
+    },
+
     /// Error parsing JSON input.
     ///
     /// Wraps errors from the `serde_json` crate.

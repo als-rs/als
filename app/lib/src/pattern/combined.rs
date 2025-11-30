@@ -37,8 +37,82 @@ impl CombinedDetector {
             return None;
         }
 
-        // Try different pattern lengths
-        for pattern_len in 2..=values.len() / 2 {
+        // First, try to detect the pattern length by finding where the sequence resets
+        // This is much more efficient than trying all possible lengths
+        if let Some(pattern_len) = self.detect_pattern_length_smart(values) {
+            if values.len() % pattern_len == 0 {
+                let repeat_count = values.len() / pattern_len;
+                if repeat_count >= 2 {
+                    let pattern = &values[..pattern_len];
+                    
+                    // Verify the pattern repeats
+                    let mut is_repeated = true;
+                    for i in 1..repeat_count {
+                        let chunk = &values[i * pattern_len..(i + 1) * pattern_len];
+                        if chunk != pattern {
+                            is_repeated = false;
+                            break;
+                        }
+                    }
+
+                    if is_repeated {
+                        // Check if the pattern itself is a range
+                        if let Some(range_result) = self.range_detector.detect(pattern) {
+                            if let crate::als::AlsOperator::Range { start, end, step } = range_result.operator {
+                                let original_len = Self::calculate_original_length(values);
+                                return Some(DetectionResult::repeated_range(
+                                    start, end, step, repeat_count, original_len
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback: try common pattern lengths and divisors
+        // This handles cases where the smart detection doesn't work
+        let max_pattern_len = std::cmp::min(values.len() / 2, 100000);
+
+        // First, try to find pattern length by looking for where values repeat
+        if let Some(pattern_len) = self.find_pattern_length_by_repetition(values) {
+            if pattern_len >= 2 && values.len() % pattern_len == 0 {
+                let repeat_count = values.len() / pattern_len;
+                if repeat_count >= 2 {
+                    let pattern = &values[..pattern_len];
+
+                    // Verify the pattern repeats
+                    let mut is_repeated = true;
+                    for i in 1..repeat_count {
+                        let chunk = &values[i * pattern_len..(i + 1) * pattern_len];
+                        if chunk != pattern {
+                            is_repeated = false;
+                            break;
+                        }
+                    }
+
+                    if is_repeated {
+                        // Check if the pattern itself is a range
+                        if let Some(range_result) = self.range_detector.detect(pattern) {
+                            if let crate::als::AlsOperator::Range { start, end, step } =
+                                range_result.operator
+                            {
+                                let original_len = Self::calculate_original_length(values);
+                                return Some(DetectionResult::repeated_range(
+                                    start,
+                                    end,
+                                    step,
+                                    repeat_count,
+                                    original_len,
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for pattern_len in 2..=max_pattern_len {
             if values.len() % pattern_len != 0 {
                 continue;
             }
@@ -76,6 +150,79 @@ impl CombinedDetector {
         }
 
         None
+    }
+
+    /// Find pattern length by looking for where the first value appears again
+    /// and the sequence repeats.
+    fn find_pattern_length_by_repetition(&self, values: &[&str]) -> Option<usize> {
+        if values.len() < 4 {
+            return None;
+        }
+
+        let first = values[0];
+        let second = values.get(1)?;
+
+        // Look for where the first value appears again (potential pattern boundary)
+        // Only check up to a reasonable limit to avoid O(n²) behavior
+        let search_limit = std::cmp::min(values.len() / 2, 100000);
+
+        for i in 2..=search_limit {
+            if values.get(i) == Some(&first) {
+                // Found potential pattern boundary
+                // Verify the next value matches the second value
+                if values.get(i + 1) == Some(second) {
+                    // This looks like a pattern boundary
+                    // Quick verification: check if values.len() is divisible by i
+                    if values.len() % i == 0 {
+                        return Some(i);
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Smart detection of pattern length by finding where the sequence resets.
+    ///
+    /// For a sequence like 0, 1, 2, ..., 999, 0, 1, 2, ..., 999, ...
+    /// or 1, 2, 3, ..., 999, 0, 1, 2, ..., 999, 0, ...
+    /// this finds the position where the value resets.
+    fn detect_pattern_length_smart(&self, values: &[&str]) -> Option<usize> {
+        if values.len() < 4 {
+            return None;
+        }
+
+        // Try to parse first two values as integers to detect arithmetic sequences
+        let first: i64 = values[0].trim().parse().ok()?;
+        let second: i64 = values[1].trim().parse().ok()?;
+        let step = second - first;
+
+        if step == 0 {
+            return None; // All same values, not a range pattern
+        }
+
+        // Find where the sequence breaks (value doesn't follow the expected pattern)
+        for i in 2..values.len() {
+            let current: i64 = values[i].trim().parse().ok()?;
+            let expected = first + (i as i64) * step;
+
+            if current != expected {
+                // Found a break - this is the pattern length
+                // Verify this is actually a repeating pattern by checking the next few values
+                if i + 1 < values.len() {
+                    let next: i64 = values[i + 1].trim().parse().ok()?;
+                    // Check if the pattern restarts: current should equal first, next should equal second
+                    if current == first && next == second {
+                        return Some(i);
+                    }
+                }
+                // Not a clean repeating pattern
+                return None;
+            }
+        }
+
+        None // No reset found, it's a single range (not repeating)
     }
 
     /// Try to detect a repeated toggle pattern.

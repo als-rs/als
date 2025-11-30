@@ -1,9 +1,12 @@
 use als_compression::{AlsCompressor, AlsError, AlsParser, CompressorConfig};
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
+use indicatif::{ProgressBar, ProgressStyle};
+use log::{debug, error, info, warn};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
+use std::time::Instant;
 
 /// ALS (Adaptive Logic Stream) compression tool for structured data
 #[derive(Parser)]
@@ -130,13 +133,21 @@ fn main() -> Result<()> {
 
 /// Set up logging based on verbosity flags
 fn setup_logging(verbose: bool, quiet: bool) {
-    // For now, this is a placeholder
-    // In future tasks, we'll implement proper logging
-    if verbose {
-        eprintln!("Verbose mode enabled");
-    } else if quiet {
-        // Suppress output
-    }
+    let log_level = if quiet {
+        "error"
+    } else if verbose {
+        "debug"
+    } else {
+        "info"
+    };
+
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level))
+        .format_timestamp(None)
+        .format_module_path(false)
+        .format_target(false)
+        .init();
+
+    debug!("Logging initialized at {} level", log_level);
 }
 
 /// Load configuration from a file
@@ -214,83 +225,101 @@ fn compress_command(
     output: &str,
     format: Format,
     config: CompressorConfig,
-    verbose: bool,
+    _verbose: bool,
     quiet: bool,
 ) -> Result<()> {
-    if verbose {
-        eprintln!("Compressing {} to {}", input, output);
-    }
+    let start_time = Instant::now();
+    
+    info!("Starting compression: {} -> {}", input, output);
 
-    // Read input
+    // Read input with progress bar for large files
+    let progress = create_progress_bar(quiet, "Reading input");
     let input_data = read_input(input)?;
+    progress.finish_and_clear();
     
     if input_data.is_empty() {
-        if !quiet {
-            eprintln!("Warning: Input is empty");
-        }
+        warn!("Input is empty");
         write_output(output, "")?;
         return Ok(());
     }
+
+    let input_size = input_data.len();
+    debug!("Read {} bytes from input", input_size);
 
     // Detect format if auto
     let detected_format = match format {
         Format::Auto => {
             let detected = detect_format(input, &input_data);
-            if verbose {
-                eprintln!("Detected format: {}", detected.as_str());
-            }
+            info!("Auto-detected format: {}", detected.as_str());
             detected
         }
         _ => format,
     };
 
-    if verbose {
-        eprintln!("Input format: {}", detected_format.as_str());
-        eprintln!("Input size: {} bytes", input_data.len());
-    }
+    debug!("Input format: {}", detected_format.as_str());
 
     // Create compressor
     let compressor = AlsCompressor::with_config(config);
 
-    // Compress based on format
+    // Compress based on format with progress indication
+    let progress = create_progress_bar(quiet, "Compressing");
+    let compress_start = Instant::now();
+    
     let compressed = match detected_format {
         Format::Csv => {
+            debug!("Compressing CSV data");
             compressor
                 .compress_csv(&input_data)
                 .map_err(|e| map_als_error(e, "CSV compression"))?
         }
         Format::Json => {
+            debug!("Compressing JSON data");
             compressor
                 .compress_json(&input_data)
                 .map_err(|e| map_als_error(e, "JSON compression"))?
         }
         Format::Als => {
+            error!("Input is already in ALS format");
             anyhow::bail!("Input is already in ALS format. Use 'decompress' command instead.");
         }
         Format::Auto => {
-            // This shouldn't happen as we detect format above
+            error!("Failed to detect input format");
             anyhow::bail!("Failed to detect input format");
         }
     };
+    
+    let compress_duration = compress_start.elapsed();
+    progress.finish_and_clear();
 
-    if verbose {
-        eprintln!("Output size: {} bytes", compressed.len());
-        let ratio = input_data.len() as f64 / compressed.len() as f64;
-        eprintln!("Compression ratio: {:.2}x", ratio);
-    }
+    let output_size = compressed.len();
+    let ratio = input_size as f64 / output_size as f64;
+    let throughput = (input_size as f64 / 1_048_576.0) / compress_duration.as_secs_f64();
+    
+    debug!("Compressed {} bytes to {} bytes", input_size, output_size);
+    debug!("Compression ratio: {:.2}x", ratio);
+    debug!("Compression time: {:.3}s", compress_duration.as_secs_f64());
+    debug!("Throughput: {:.2} MB/s", throughput);
 
     // Write output
+    let progress = create_progress_bar(quiet, "Writing output");
     write_output(output, &compressed)?;
+    progress.finish_and_clear();
 
+    let total_duration = start_time.elapsed();
+
+    // Display summary
     if !quiet {
-        let ratio = input_data.len() as f64 / compressed.len() as f64;
-        eprintln!(
-            "Compressed {} bytes to {} bytes (ratio: {:.2}x)",
-            input_data.len(),
-            compressed.len(),
-            ratio
-        );
+        let savings = ((1.0 - (output_size as f64 / input_size as f64)) * 100.0).max(0.0);
+        eprintln!("✓ Compression complete");
+        eprintln!("  Input:       {}", format_bytes(input_size));
+        eprintln!("  Output:      {}", format_bytes(output_size));
+        eprintln!("  Ratio:       {:.2}x", ratio);
+        eprintln!("  Savings:     {:.1}%", savings);
+        eprintln!("  Time:        {:.3}s", total_duration.as_secs_f64());
+        eprintln!("  Throughput:  {:.2} MB/s", throughput);
     }
+
+    info!("Compression completed in {:.3}s", total_duration.as_secs_f64());
 
     Ok(())
 }
@@ -300,41 +329,39 @@ fn decompress_command(
     input: &str,
     output: &str,
     format: Format,
-    verbose: bool,
+    _verbose: bool,
     quiet: bool,
 ) -> Result<()> {
-    if verbose {
-        eprintln!("Decompressing {} to {}", input, output);
-        eprintln!("Output format: {}", format.as_str());
-    }
+    let start_time = Instant::now();
+    
+    info!("Starting decompression: {} -> {}", input, output);
+    debug!("Output format: {}", format.as_str());
 
-    // Read ALS input
+    // Read ALS input with progress bar
+    let progress = create_progress_bar(quiet, "Reading input");
     let als_data = read_input(input)?;
+    progress.finish_and_clear();
     
     if als_data.is_empty() {
-        if !quiet {
-            eprintln!("Warning: Input is empty");
-        }
+        warn!("Input is empty");
         write_output(output, "")?;
         return Ok(());
     }
 
-    if verbose {
-        eprintln!("Input size: {} bytes", als_data.len());
-    }
+    let input_size = als_data.len();
+    debug!("Read {} bytes from input", input_size);
 
     // Validate that format is CSV or JSON (not ALS or Auto)
     let output_format = match format {
         Format::Csv => Format::Csv,
         Format::Json => Format::Json,
         Format::Als => {
+            error!("Cannot decompress to ALS format");
             anyhow::bail!("Cannot decompress to ALS format. Use 'csv' or 'json' as output format.");
         }
         Format::Auto => {
             // Default to CSV for auto-detection
-            if verbose {
-                eprintln!("Auto-detecting output format: defaulting to CSV");
-            }
+            info!("Auto-detecting output format: defaulting to CSV");
             Format::Csv
         }
     };
@@ -342,67 +369,99 @@ fn decompress_command(
     // Create parser
     let parser = AlsParser::new();
 
-    // Decompress based on output format
+    // Decompress based on output format with progress indication
+    let progress = create_progress_bar(quiet, "Decompressing");
+    let decompress_start = Instant::now();
+    
     let decompressed = match output_format {
         Format::Csv => {
+            debug!("Decompressing to CSV");
             parser
                 .to_csv(&als_data)
                 .map_err(|e| map_als_error(e, "ALS decompression to CSV"))?
         }
         Format::Json => {
+            debug!("Decompressing to JSON");
             parser
                 .to_json(&als_data)
                 .map_err(|e| map_als_error(e, "ALS decompression to JSON"))?
         }
         _ => unreachable!("Output format should be CSV or JSON at this point"),
     };
+    
+    let decompress_duration = decompress_start.elapsed();
+    progress.finish_and_clear();
 
-    if verbose {
-        eprintln!("Output size: {} bytes", decompressed.len());
-        let ratio = als_data.len() as f64 / decompressed.len() as f64;
-        eprintln!("Decompression ratio: {:.2}x", ratio);
-    }
+    let output_size = decompressed.len();
+    let expansion_ratio = output_size as f64 / input_size as f64;
+    let throughput = (output_size as f64 / 1_048_576.0) / decompress_duration.as_secs_f64();
+    
+    debug!("Decompressed {} bytes to {} bytes", input_size, output_size);
+    debug!("Expansion ratio: {:.2}x", expansion_ratio);
+    debug!("Decompression time: {:.3}s", decompress_duration.as_secs_f64());
+    debug!("Throughput: {:.2} MB/s", throughput);
 
     // Write output
+    let progress = create_progress_bar(quiet, "Writing output");
     write_output(output, &decompressed)?;
+    progress.finish_and_clear();
 
+    let total_duration = start_time.elapsed();
+
+    // Display summary
     if !quiet {
-        eprintln!(
-            "Decompressed {} bytes to {} bytes",
-            als_data.len(),
-            decompressed.len()
-        );
+        eprintln!("✓ Decompression complete");
+        eprintln!("  Input:       {}", format_bytes(input_size));
+        eprintln!("  Output:      {}", format_bytes(output_size));
+        eprintln!("  Expansion:   {:.2}x", expansion_ratio);
+        eprintln!("  Time:        {:.3}s", total_duration.as_secs_f64());
+        eprintln!("  Throughput:  {:.2} MB/s", throughput);
     }
+
+    info!("Decompression completed in {:.3}s", total_duration.as_secs_f64());
 
     Ok(())
 }
 
 /// Execute the info command
 fn info_command(input: &str, verbose: bool, quiet: bool) -> Result<()> {
-    if verbose {
-        eprintln!("Reading ALS info from {}", input);
-    }
+    let start_time = Instant::now();
+    
+    info!("Reading ALS document info from {}", input);
 
-    // Read ALS input
+    // Read ALS input with progress bar
+    let progress = create_progress_bar(quiet, "Reading input");
     let als_data = read_input(input)?;
+    progress.finish_and_clear();
     
     if als_data.is_empty() {
-        if !quiet {
-            eprintln!("Warning: Input is empty");
-        }
+        warn!("Input is empty");
         return Ok(());
     }
 
+    debug!("Read {} bytes from input", als_data.len());
+
     // Parse the ALS document
+    let progress = create_progress_bar(quiet, "Parsing ALS");
     let parser = AlsParser::new();
+    let parse_start = Instant::now();
+    
     let doc = parser
         .parse(&als_data)
         .map_err(|e| map_als_error(e, "ALS parsing"))?;
+    
+    let parse_duration = parse_start.elapsed();
+    progress.finish_and_clear();
+    
+    debug!("Parsed ALS document in {:.3}s", parse_duration.as_secs_f64());
 
     // Display document information
     if !quiet {
         display_document_info(&doc, &als_data, verbose);
     }
+
+    let total_duration = start_time.elapsed();
+    debug!("Info command completed in {:.3}s", total_duration.as_secs_f64());
 
     Ok(())
 }
@@ -585,6 +644,48 @@ fn estimate_uncompressed_size(doc: &als_compression::AlsDocument) -> usize {
     let schema_size: usize = doc.schema.iter().map(|s| s.len() + 1).sum();
     
     schema_size + (total_values * estimated_value_size)
+}
+
+/// Create a progress bar (spinner) for operations
+fn create_progress_bar(quiet: bool, message: &str) -> ProgressBar {
+    if quiet {
+        // Return a hidden progress bar in quiet mode
+        ProgressBar::hidden()
+    } else {
+        let pb = ProgressBar::new_spinner();
+        pb.set_style(
+            ProgressStyle::default_spinner()
+                .template("{spinner:.green} {msg}")
+                .unwrap()
+                .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
+        );
+        pb.set_message(message.to_string());
+        pb.enable_steady_tick(std::time::Duration::from_millis(100));
+        pb
+    }
+}
+
+/// Format bytes in human-readable format
+fn format_bytes(bytes: usize) -> String {
+    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
+    
+    if bytes == 0 {
+        return "0 B".to_string();
+    }
+    
+    let mut size = bytes as f64;
+    let mut unit_index = 0;
+    
+    while size >= 1024.0 && unit_index < UNITS.len() - 1 {
+        size /= 1024.0;
+        unit_index += 1;
+    }
+    
+    if unit_index == 0 {
+        format!("{} {}", bytes, UNITS[0])
+    } else {
+        format!("{:.2} {}", size, UNITS[unit_index])
+    }
 }
 
 /// Map AlsError to anyhow::Error with context

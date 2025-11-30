@@ -21,6 +21,7 @@
 //! | `_` | `\_` | Dictionary reference prefix |
 //! | `#` | `\#` | Schema prefix |
 //! | `$` | `\$` | Dictionary header prefix |
+//! | `:` | `\:` | Step separator in ranges |
 //! | `\` | `\\` | Escape character itself |
 //! | newline | `\n` | Line break |
 //! | tab | `\t` | Tab character |
@@ -96,6 +97,7 @@ pub fn escape_als_string(s: &str) -> String {
             '_' => result.push_str("\\_"),
             '#' => result.push_str("\\#"),
             '$' => result.push_str("\\$"),
+            ':' => result.push_str("\\:"),
             '\\' => result.push_str("\\\\"),
             '\n' => result.push_str("\\n"),
             '\t' => result.push_str("\\t"),
@@ -157,6 +159,7 @@ pub fn unescape_als_string(s: &str) -> Result<String> {
                 Some('_') => result.push('_'),
                 Some('#') => result.push('#'),
                 Some('$') => result.push('$'),
+                Some(':') => result.push(':'),
                 Some('\\') => result.push('\\'),
                 Some('n') => result.push('\n'),
                 Some('t') => result.push('\t'),
@@ -340,7 +343,7 @@ pub fn decode_als_value(s: &str) -> Result<Option<String>> {
 /// ```
 pub fn needs_escaping(s: &str) -> bool {
     s.chars().any(|c| matches!(c, 
-        '>' | '*' | '~' | '|' | '_' | '#' | '$' | '\\' | '\n' | '\t' | '\r' | ' '
+        '>' | '*' | '~' | '|' | '_' | '#' | '$' | ':' | '\\' | '\n' | '\t' | '\r' | ' '
     ))
 }
 
